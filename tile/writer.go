@@ -4,7 +4,10 @@ import (
 	"errors"
 	"image"
 	"image/color"
+	"image/draw"
 	"io"
+
+	"github.com/ericpauley/go-quantize/quantize"
 )
 
 type encoder struct {
@@ -67,9 +70,11 @@ func Encode(w io.Writer, m image.Image) error {
 			}
 		}
 	}
+	// TODO Support more than 16 colors
 	if pm == nil || len(pm.Palette) > colorsPerPalette { // colorsPerPalette*maxPalettes {
-		// TODO
-		return errors.New("tile: TODO support more than 16 colors")
+		q := quantize.MedianCutQuantizer{}
+		pm = image.NewPaletted(b, q.Quantize(make(color.Palette, 0, colorsPerPalette), m))
+		draw.Draw(pm, b, m, b.Min, draw.Src)
 	}
 
 	// Adjust image so that top-left corner is at (0, 0)
