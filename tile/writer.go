@@ -6,12 +6,32 @@ import (
 	"image/color"
 	"image/draw"
 	"io"
+	"sort"
 
 	"github.com/ericpauley/go-quantize/quantize"
 )
 
 type encoder struct {
 	w io.Writer
+}
+
+type paletteMap struct {
+	palette color.Palette
+	tiles   []byte
+}
+
+type byPaletteSize []paletteMap
+
+func (p byPaletteSize) Len() int {
+	return len(p)
+}
+
+func (p byPaletteSize) Swap(i, j int) {
+	p[i], p[j] = p[j], p[i]
+}
+
+func (p byPaletteSize) Less(i, j int) bool {
+	return len(p[i].palette) < len(p[j].palette)
 }
 
 func countColors(m *image.Paletted, r image.Rectangle) map[color.Color]int {
@@ -33,11 +53,13 @@ func uniqueColors(m *image.Paletted, r image.Rectangle) color.Palette {
 	return p
 }
 
+// Copied from color.sqDiff
 func sqDiff(x, y uint32) uint32 {
 	d := x - y
 	return (d * d) >> 2
 }
 
+// Return the two closest colors in a given palette
 func closestColors(p color.Palette) (color.Color, color.Color) {
 	var rc1, rc2 color.Color
 	bestSum := uint32(1<<32 - 1)
@@ -56,6 +78,7 @@ func closestColors(p color.Palette) (color.Color, color.Color) {
 	return rc1, rc2
 }
 
+// Replace all occurrences of one color in an image with another
 func replaceColor(m *image.Paletted, o, n color.Color) {
 	for y := m.Bounds().Min.Y; y < m.Bounds().Max.Y; y++ {
 		for x := m.Bounds().Min.X; x < m.Bounds().Max.X; x++ {
@@ -66,7 +89,53 @@ func replaceColor(m *image.Paletted, o, n color.Color) {
 	}
 }
 
-func reducePalette(m *image.Paletted) color.Palette {
+// Colors in p2 but not in p1
+func paletteDifference(p1, p2 color.Palette) (d color.Palette) {
+	m := make(map[color.Color]struct{})
+	for _, c := range p1 {
+		m[c] = struct{}{}
+	}
+	for _, c := range p2 {
+		if _, ok := m[c]; !ok {
+			d = append(d, c)
+		}
+	}
+	return
+}
+
+// Variation of bin-packing problem; maxPalettes number of bins each with
+// capacity of colorsPerPalette. Based on First Fit Decreasing algorithm;
+// relies on the incoming palettes being sorted in decreasing size
+func packPalette(in, out []paletteMap) ([]paletteMap, bool) {
+	switch {
+	case len(out) == 0: // First step, use the first (biggest) palette
+		return packPalette(in[1:], append(out, in[0]))
+	case len(in) == 0: // Finished, is it using three palettes or less?
+		return out, len(out) <= maxPalettes
+	default:
+		// Loop over each current bin (palette)
+		for i := range out {
+			d := paletteDifference(out[i].palette, in[0].palette)
+
+			// Either the candidate palette is a subset or the
+			// difference can fit in the current palette
+			if len(d) == 0 || len(d)+len(out[i].palette) <= colorsPerPalette {
+				dup := append(out[:0:0], out...)
+				if len(d) > 0 {
+					dup[i].palette = append(dup[i].palette, d...)
+				}
+				dup[i].tiles = append(dup[i].tiles, in[0].tiles...)
+				if ret, ok := packPalette(in[1:], dup); ok {
+					return ret, true
+				}
+			}
+		}
+		// Last resort, start a new bin (palette)
+		return packPalette(in[1:], append(out, in[0]))
+	}
+}
+
+func reducePalette(m *image.Paletted) (color.Palette, [numTiles]byte, bool) {
 	b := m.Bounds()
 
 	// Create a copy of the image
@@ -107,27 +176,53 @@ func reducePalette(m *image.Paletted) color.Palette {
 		}
 	}
 
-	//var palettes [numTiles]color.Palette
-
+	// Loop over every tile and count the number of colors per tile
+	var palettes []paletteMap
 	for ty := 0; ty < tileY; ty++ {
 		for tx := 0; tx < tileX; tx++ {
-			//tile := ty*tileX + tx
-			//r := image.Rect(tx*tileWidth, ty*tileHeight, tx*tileWidth+tileWidth-1, ty*tileHeight+tileHeight-1)
+			r := image.Rect(tx*tileWidth, ty*tileHeight, tx*tileWidth+tileWidth-1, ty*tileHeight+tileHeight-1)
+			palettes = append(palettes, paletteMap{
+				palette: uniqueColors(dup, r),
+				tiles:   []byte{byte(ty*tileX + tx)},
+			})
 		}
 	}
 
-	return uniqueColors(dup, b)
+	// Sort with biggest palettes first
+	sort.Sort(sort.Reverse(byPaletteSize(palettes)))
+
+	// Try and pack each tile palette into no more than three palettes
+	if packed, ok := packPalette(palettes, []paletteMap{}); ok {
+		var tiles [numTiles]byte
+		var palette color.Palette
+		for i, p := range packed {
+			for _, t := range p.tiles {
+				tiles[t] = byte(i)
+			}
+			palette = append(palette, p.palette...)
+
+			// Pad palette to multiple of colorsPerPalette
+			mod := len(palette) % colorsPerPalette
+			if mod > 0 {
+				palette = append(palette, make([]color.Color, colorsPerPalette-mod, colorsPerPalette-mod)...)
+			}
+		}
+		return palette, tiles, true
+	}
+
+	return nil, [numTiles]byte{}, false
 }
 
-func (e *encoder) encode(m *image.Paletted) error {
+func (e *encoder) encode(m *image.Paletted, tiles [numTiles]byte) error {
+	// Write out pixel information
 	for ty := 0; ty < tileY; ty++ {
 		for tx := 0; tx < tileX; tx++ {
-			//tile := ty*tileX + tx
 			for y := 0; y < tileHeight; y++ {
 				for x := 0; x < tileWidth>>1; x++ {
 					dx := tx*tileWidth + x<<1
 					dy := ty*tileHeight + y
 
+					// This is masking off any bits leaving a 0-15 value
 					if _, err := e.w.Write([]byte{(m.ColorIndexAt(dx, dy) & 0x0f << 4) | m.ColorIndexAt(dx+1, dy)&0x0f}); err != nil {
 						return err
 					}
@@ -136,12 +231,12 @@ func (e *encoder) encode(m *image.Paletted) error {
 		}
 	}
 
-	for i := 0; i < numTiles; i++ {
-		if _, err := e.w.Write([]byte{0x00}); err != nil {
-			return err
-		}
+	// Write out palette indices
+	if _, err := e.w.Write(tiles[:]); err != nil {
+		return err
 	}
 
+	// Write out palette(s) assuming it's already a multiple of 16 colors
 	var tmp [2]byte
 	for _, c := range m.Palette {
 		r, g, b, _ := c.RGBA()
@@ -175,16 +270,34 @@ func Encode(w io.Writer, m image.Image) error {
 			}
 		}
 	}
-	if pm == nil || len(pm.Palette) > colorsPerPalette*maxPalettes {
-		q := quantize.MedianCutQuantizer{}
-		pm = image.NewPaletted(b, q.Quantize(make(color.Palette, 0, colorsPerPalette*maxPalettes), m))
-		draw.Draw(pm, b, m, b.Min, draw.Src)
-	}
 
-	p := reducePalette(pm)
-	npm := image.NewPaletted(b, p)
-	draw.Draw(npm, b, pm, b.Min, draw.Src)
-	pm = npm
+	// Will default to all zeroes which is correct for <= colorsPerPalette
+	var tiles [numTiles]byte
+
+	if pm == nil || len(pm.Palette) > colorsPerPalette {
+		q := quantize.MedianCutQuantizer{}
+
+		// Work out the starting maximum colors
+		max := colorsPerPalette * maxPalettes
+		if pm != nil && len(pm.Palette) < max {
+			max = len(pm.Palette)
+		}
+
+		// Keep reducing the colors until the palette can be packed
+		for i := max; i >= colorsPerPalette; i-- {
+			// Create the inital palette
+			tmp := image.NewPaletted(b, q.Quantize(make(color.Palette, 0, i), m))
+			draw.Draw(tmp, b, m, b.Min, draw.Src)
+
+			// Try and pack it
+			if p, t, ok := reducePalette(tmp); ok {
+				pm = image.NewPaletted(b, p)
+				draw.Draw(pm, b, tmp, b.Min, draw.Src)
+				copy(tiles[:], t[:])
+				break
+			}
+		}
+	}
 
 	// Adjust image so that top-left corner is at (0, 0)
 	if pm.Rect.Min != (image.Point{}) {
@@ -195,5 +308,5 @@ func Encode(w io.Writer, m image.Image) error {
 
 	e := encoder{w: w}
 
-	return e.encode(pm)
+	return e.encode(pm, tiles)
 }
