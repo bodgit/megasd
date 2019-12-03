@@ -9,11 +9,11 @@ package crc32
 
 import (
 	"hash"
-	crc32x "hash/crc32"
+	crc "hash/crc32"
 )
 
-func makeTable(poly uint32) *crc32x.Table {
-	t := new(crc32x.Table)
+func makeTable(poly uint32) *crc.Table {
+	t := new(crc.Table)
 	for i := 0; i < 256; i++ {
 		crc := uint32(i << 24)
 		for j := 0; j < 8; j++ {
@@ -34,7 +34,7 @@ var table = makeTable(polynomial)
 
 type digest struct {
 	crc uint32
-	tab *crc32x.Table
+	tab *crc.Table
 }
 
 // New creates a new hash.Hash32 computing the CRC-32 checksum. Its Sum
@@ -43,13 +43,13 @@ func New() hash.Hash32 {
 	return &digest{0, table}
 }
 
-func (d *digest) Size() int { return crc32x.Size }
+func (d *digest) Size() int { return crc.Size }
 
 func (d *digest) BlockSize() int { return 1 }
 
 func (d *digest) Reset() { d.crc = 0 }
 
-func update(crc uint32, tab *crc32x.Table, p []byte) uint32 {
+func update(crc uint32, tab *crc.Table, p []byte) uint32 {
 	for i := range p {
 		crc = crc<<8 ^ tab[((crc>>24)^uint32(p[i^3]))&0xff]
 	}
