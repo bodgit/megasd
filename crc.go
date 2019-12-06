@@ -20,6 +20,10 @@ const (
 	sectorTrailer = 288
 )
 
+const (
+	filenameTrim = 56
+)
+
 func firstDataTrack(sheet *cue.Sheet) (string, cue.TrackDataType, error) {
 	for _, file := range sheet.Files {
 		for _, track := range file.Tracks {
@@ -82,6 +86,15 @@ func crcFile(file string) (string, error) {
 	}
 	defer f.Close()
 
+	info, err := f.Stat()
+	if err != nil {
+		return "", err
+	}
+
+	if _, err = f.Seek(info.Size()&0xfff, os.SEEK_CUR); err != nil {
+		return "", nil
+	}
+
 	h := crc32.NewIEEE()
 	if _, err = io.Copy(h, f); err != nil {
 		return "", err
@@ -91,5 +104,7 @@ func crcFile(file string) (string, error) {
 }
 
 func crcFilename(filename string) string {
-	return fmt.Sprintf("%X", crc.Update(0xffffffff, []byte(fmt.Sprintf("%.56s", strings.ToUpper(filename)))))
+	var b [filenameTrim]byte
+	copy(b[:], []byte(fmt.Sprintf("%.*s", filenameTrim, strings.ToUpper(filename))))
+	return fmt.Sprintf("%.*X", crc32.Size<<1, crc.Update(0xffffffff, b[:]))
 }
