@@ -135,6 +135,16 @@ func packPalette(in, out []paletteMap) ([]paletteMap, bool) {
 	}
 }
 
+func padPalette(p color.Palette) color.Palette {
+	// Pad palette to multiple of colorsPerPalette
+	if mod := len(p) % colorsPerPalette; mod > 0 {
+		for i := 0; i < colorsPerPalette-mod; i++ {
+			p = append(p, color.RGBA{0, 0, 0, 0})
+		}
+	}
+	return p
+}
+
 func reducePalette(m *image.Paletted) (color.Palette, [numTiles]byte, bool) {
 	b := m.Bounds()
 
@@ -199,13 +209,7 @@ func reducePalette(m *image.Paletted) (color.Palette, [numTiles]byte, bool) {
 			for _, t := range p.tiles {
 				tiles[t] = byte(i)
 			}
-			palette = append(palette, p.palette...)
-
-			// Pad palette to multiple of colorsPerPalette
-			mod := len(palette) % colorsPerPalette
-			if mod > 0 {
-				palette = append(palette, make([]color.Color, colorsPerPalette-mod, colorsPerPalette-mod)...)
-			}
+			palette = append(palette, padPalette(p.palette)...)
 		}
 		return palette, tiles, true
 	}
@@ -297,6 +301,8 @@ func Encode(w io.Writer, m image.Image) error {
 				break
 			}
 		}
+	} else {
+		pm.Palette = padPalette(pm.Palette)
 	}
 
 	// Adjust image so that top-left corner is at (0, 0)
