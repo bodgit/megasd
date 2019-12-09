@@ -58,7 +58,7 @@ func (db *GameDB) Close() error {
 	return db.db.Close()
 }
 
-func (db *GameDB) AddScreenshot(file string) (int64, error) {
+func (db *GameDB) addScreenshot(file string) (int64, error) {
 	f, err := os.Open(file)
 	if err != nil {
 		return 0, err
@@ -73,13 +73,13 @@ func (db *GameDB) AddScreenshot(file string) (int64, error) {
 	sha := fmt.Sprintf("%X", h.Sum(nil))
 
 	var id int64
-	switch err := db.db.QueryRow("SELECT id FROM screenshot WHERE sha1 = :sha1", sql.Named("sha1", sha)).Scan(&id); err {
+	switch err := db.db.QueryRow("SELECT id FROM screenshot WHERE sha1 = ?", sha).Scan(&id); err {
 	case sql.ErrNoRows:
 		b := new(bytes.Buffer)
 		if err := tile.Encode(b, m); err != nil {
 			return 0, err
 		}
-		result, err := db.db.Exec("INSERT INTO screenshot (sha1, tile) VALUES (:sha1, :tile)", sql.Named("sha1", sha), sql.Named("tile", b.Bytes()))
+		result, err := db.db.Exec("INSERT INTO screenshot (sha1, tile) VALUES (?, ?)", sha, b.Bytes())
 		if err != nil {
 			return 0, err
 		}
@@ -91,11 +91,11 @@ func (db *GameDB) AddScreenshot(file string) (int64, error) {
 	}
 }
 
-func (db *GameDB) AddGame(year int, genre genre, screenshot int64) (int64, error) {
+func (db *GameDB) addGame(name string, year, genre, screenshot sql.NullInt64) (int64, error) {
 	var id int64
-	switch err := db.db.QueryRow("SELECT id FROM game WHERE year = :year, genre = :genre, screenshot_id = :screenshot_id", sql.Named("year", year), sql.Named("genre", genre), sql.Named("screenshot_id", screenshot)).Scan(&id); err {
+	switch err := db.db.QueryRow("SELECT id FROM game WHERE name = ? AND year = ? AND genre = ? AND screenshot_id = ?", name, year, genre, screenshot).Scan(&id); err {
 	case sql.ErrNoRows:
-		result, err := db.db.Exec("INSERT INTO game (year, genre, screenshot_id) VALUES(:year, :genre, :screenshot_id)", sql.Named("year", year), sql.Named("genre", genre), sql.Named("screenshot_id", screenshot))
+		result, err := db.db.Exec("INSERT INTO game (name, year, genre, screenshot_id) VALUES (?, ?, ?, ?)", name, year, genre, screenshot)
 		if err != nil {
 			return 0, err
 		}
@@ -107,6 +107,9 @@ func (db *GameDB) AddGame(year int, genre genre, screenshot int64) (int64, error
 	}
 }
 
-func (db *GameDB) AddChecksum(game int64, crc string) error {
+func (db *GameDB) addChecksum(game int64, crc string) error {
+	if _, err := db.db.Exec("INSERT OR REPLACE INTO checksum (game_id, crc) VALUES (?, ?)", game, crc); err != nil {
+		return err
+	}
 	return nil
 }
