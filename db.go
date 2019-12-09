@@ -8,7 +8,7 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
-	"image"
+	img "image"
 	_ "image/gif"
 	_ "image/jpeg"
 	_ "image/png"
@@ -19,7 +19,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/bodgit/megasd/tile"
+	"github.com/bodgit/megasd/image"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -157,7 +157,7 @@ func (db *GameDB) addScreenshot(file string) (int64, error) {
 	defer f.Close()
 
 	h := sha1.New()
-	m, _, err := image.Decode(io.TeeReader(f, h))
+	m, _, err := img.Decode(io.TeeReader(f, h))
 	if err != nil {
 		return 0, err
 	}
@@ -167,7 +167,7 @@ func (db *GameDB) addScreenshot(file string) (int64, error) {
 	switch err := db.db.QueryRow("SELECT id FROM screenshot WHERE sha1 = ?", sha).Scan(&id); err {
 	case sql.ErrNoRows:
 		b := new(bytes.Buffer)
-		if err := tile.Encode(b, m); err != nil {
+		if err := image.Encode(b, m); err != nil {
 			return 0, err
 		}
 		result, err := db.db.Exec("INSERT INTO screenshot (sha1, tile) VALUES (?, ?)", sha, b.Bytes())

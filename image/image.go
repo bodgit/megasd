@@ -1,5 +1,5 @@
 /*
-Package tile implements a MegaSD tile decoder and encoder.
+Package image implements a MegaSD image decoder and encoder.
 
 The format is defined as 64 by 40 pixels exactly which is split into forty 8
 by 8 tiles. Up to three 16 color palettes can be defined and each tile can
@@ -11,7 +11,7 @@ three 32 byte palettes of 16 colors where each color is stored as a packed
 16-bit value. There is no compression so the resulting file is either 1352,
 1384, or 1416 bytes in size depending on the number of palettes used.
 */
-package tile
+package image
 
 const (
 	tileWidth        = 8

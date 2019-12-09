@@ -1,4 +1,4 @@
-package tile
+package image
 
 import (
 	"errors"
@@ -289,7 +289,7 @@ func Encode(w io.Writer, m image.Image) error {
 
 		// Keep reducing the colors until the palette can be packed
 		for i := max; i >= colorsPerPalette; i-- {
-			// Create the inital palette
+			// Create the initial palette
 			tmp := image.NewPaletted(b, q.Quantize(make(color.Palette, 0, i), m))
 			draw.Draw(tmp, b, m, b.Min, draw.Src)
 
