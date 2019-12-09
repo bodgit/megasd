@@ -201,3 +201,33 @@ func (db *GameDB) addChecksum(game int64, crc string) error {
 	}
 	return nil
 }
+
+func (db *GameDB) FindScreenshotByCRC(crc string) ([]byte, error) {
+	var year, genre sql.NullInt64
+	var tile []byte
+	switch err := db.db.QueryRow("SELECT g.year, g.genre, s.tile FROM checksum AS c JOIN game AS g ON c.game_id = g.id LEFT JOIN screenshot AS s ON g.screenshot_id = s.id WHERE c.crc = ?", crc).Scan(&year, &genre, &tile); err {
+	case sql.ErrNoRows:
+		return nil, nil
+	case nil:
+		if tile == nil {
+			return nil, nil
+		}
+
+		var screenshot [2048]byte
+		copy(screenshot[:], tile)
+
+		// XXX Should only enable this if there is a genre and/or year?
+		screenshot[0x700] = 1
+		if genre.Valid {
+			screenshot[0x701] = byte(genre.Int64)
+		}
+		if year.Valid {
+			screenshot[0x702] = byte(year.Int64 & 0xff)
+			screenshot[0x703] = byte(year.Int64 >> 8 & 0xff)
+		}
+
+		return screenshot[:], nil
+	default:
+		return nil, err
+	}
+}
