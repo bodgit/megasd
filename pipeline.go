@@ -130,7 +130,9 @@ func (m *MegaSD) directoryWorker(ctx context.Context, db *GameDB, in <-chan stri
 						return err
 					}
 					if screenshot != nil {
-						meta.Add(crcFilename(strings.TrimSuffix(filepath.Base(file), filepath.Ext(file))), screenshot)
+						if err := meta.Add(crcFilename(strings.TrimSuffix(filepath.Base(file), filepath.Ext(file))), screenshot); err != nil {
+							return err
+						}
 					} else {
 						m.logger.Printf("No match for \"%s\", with CRC \"%s\"\n", file, crc)
 					}
@@ -148,7 +150,9 @@ func (m *MegaSD) directoryWorker(ctx context.Context, db *GameDB, in <-chan stri
 						return err
 					}
 					if screenshot != nil {
-						meta.Add(crcFilename(filepath.Base(filepath.Dir(file))), screenshot)
+						if err := meta.Add(crcFilename(filepath.Base(filepath.Dir(file))), screenshot); err != nil {
+							return err
+						}
 					} else {
 						m.logger.Printf("No match for \"%s\", with CRC \"%s\"\n", file, crc)
 					}

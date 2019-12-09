@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/binary"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	img "image"
 	_ "image/gif"
@@ -215,7 +216,7 @@ func (db *GameDB) FindScreenshotByCRC(crc string) ([]byte, error) {
 			return nil, nil
 		}
 
-		var screenshot [2048]byte
+		var screenshot [screenshotSize]byte
 		copy(screenshot[:], data)
 
 		// XXX Should only enable this if there is a genre and/or year?
@@ -254,12 +255,15 @@ func (db *MetaDB) Length() int {
 	return len(db.checksums)
 }
 
-func (db *MetaDB) Add(crc uint32, screenshot []byte) {
-	if _, ok := db.checksums[crc]; ok {
-		return
+func (db *MetaDB) Add(crc uint32, screenshot []byte) error {
+	if len(screenshot) != screenshotSize {
+		return errors.New("incorrect length")
 	}
-	db.screenshots = append(db.screenshots, screenshot)
-	db.checksums[crc] = uint16(len(db.screenshots) - 1)
+	if _, ok := db.checksums[crc]; !ok {
+		db.screenshots = append(db.screenshots, screenshot)
+		db.checksums[crc] = uint16(len(db.screenshots) - 1)
+	}
+	return nil
 }
 
 func (db *MetaDB) MarshalBinary() ([]byte, error) {
