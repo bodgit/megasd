@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"crypto/sha1"
 	"database/sql"
+	"encoding/binary"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"image"
 	_ "image/gif"
@@ -14,6 +16,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/bodgit/megasd/tile"
@@ -230,4 +233,78 @@ func (db *GameDB) FindScreenshotByCRC(crc string) ([]byte, error) {
 	default:
 		return nil, err
 	}
+}
+
+type MetaDB struct {
+	checksums   map[uint32]uint16
+	screenshots [][]byte
+}
+
+func NewMetaDB() *MetaDB {
+	return &MetaDB{
+		checksums: make(map[uint32]uint16),
+	}
+}
+
+func (db *MetaDB) Length() int {
+	return len(db.checksums)
+}
+
+func (db *MetaDB) Add(crc uint32, screenshot []byte) {
+	if _, ok := db.checksums[crc]; ok {
+		return
+	}
+	db.screenshots = append(db.screenshots, screenshot)
+	db.checksums[crc] = uint16(len(db.screenshots) - 1)
+}
+
+func (db *MetaDB) MarshalBinary() ([]byte, error) {
+	length := len(db.checksums)
+
+	if length > 1024 {
+		return nil, errors.New("more than 1024 entries")
+	}
+
+	keys := make([]uint32, 0, len(db.checksums))
+	for k := range db.checksums {
+		keys = append(keys, k)
+	}
+	sort.Slice(keys, func(i, j int) bool { return keys[i] < keys[j] })
+
+	b := new(bytes.Buffer)
+
+	// Write out CRC values
+	if err := binary.Write(b, binary.LittleEndian, &keys); err != nil {
+		return nil, err
+	}
+	// Pad to 4096 with 0xff's
+	if _, err := b.Write(bytes.Repeat([]byte{0xff, 0xff, 0xff, 0xff}, 1024-length)); err != nil {
+		return nil, err
+	}
+
+	// Write out screenshot indices
+	for _, k := range keys {
+		v := db.checksums[k]
+		if err := binary.Write(b, binary.LittleEndian, &v); err != nil {
+			return nil, err
+		}
+	}
+	// Pad to 6144 with 0xff's
+	if _, err := b.Write(bytes.Repeat([]byte{0xff, 0xff}, 1024-length)); err != nil {
+		return nil, err
+	}
+
+	// Write out screenshots
+	for _, s := range db.screenshots {
+		if _, err := b.Write(s); err != nil {
+			return nil, err
+		}
+	}
+
+	return b.Bytes(), nil
+}
+
+func (db *MetaDB) UnmarshalBinary(b []byte) error {
+	// TODO
+	return nil
 }
