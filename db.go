@@ -235,6 +235,8 @@ func (db *GameDB) FindScreenshotByCRC(crc string) ([]byte, error) {
 	}
 }
 
+const metaFilename = "games.dbs"
+
 type MetaDB struct {
 	checksums   map[uint32]uint16
 	screenshots [][]byte

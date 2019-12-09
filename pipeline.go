@@ -3,7 +3,6 @@ package megasd
 import (
 	"context"
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -40,7 +39,7 @@ func containsCue(dir string) (bool, error) {
 	return false, nil
 }
 
-func findDirectories(ctx context.Context, base string) (<-chan string, <-chan error, error) {
+func (m *MegaSD) findDirectories(ctx context.Context, base string) (<-chan string, <-chan error, error) {
 	out := make(chan string)
 	errc := make(chan error, 1)
 	go func() {
@@ -76,13 +75,12 @@ func findDirectories(ctx context.Context, base string) (<-chan string, <-chan er
 	return out, errc, nil
 }
 
-func directoryWorker(ctx context.Context, in <-chan string) (<-chan error, error) {
+func (m *MegaSD) directoryWorker(ctx context.Context, db *GameDB, in <-chan string) (<-chan error, error) {
 	errc := make(chan error, 1)
 	go func() {
 		defer close(errc)
 		for dir := range in {
-			// TODO Create DB
-
+			meta := NewMetaDB()
 			if err := filepath.Walk(dir, func(file string, info os.FileInfo, err error) error {
 				if err != nil {
 					return err
@@ -126,7 +124,16 @@ func directoryWorker(ctx context.Context, in <-chan string) (<-chan error, error
 					if err != nil {
 						return err
 					}
-					fmt.Println(crc, crcFilename(strings.TrimSuffix(filepath.Base(file), filepath.Ext(file))), file)
+
+					screenshot, err := db.FindScreenshotByCRC(crc)
+					if err != nil {
+						return err
+					}
+					if screenshot != nil {
+						meta.Add(crcFilename(strings.TrimSuffix(filepath.Base(file), filepath.Ext(file))), screenshot)
+					} else {
+						m.logger.Printf("No match for \"%s\", with CRC \"%s\"\n", file, crc)
+					}
 				case ".cue":
 					if filepath.Dir(filepath.Dir(file)) != dir {
 						return nil
@@ -135,7 +142,16 @@ func directoryWorker(ctx context.Context, in <-chan string) (<-chan error, error
 					if err != nil {
 						return err
 					}
-					fmt.Println(crc, crcFilename(filepath.Base(filepath.Dir(file))), file)
+
+					screenshot, err := db.FindScreenshotByCRC(crc)
+					if err != nil {
+						return err
+					}
+					if screenshot != nil {
+						meta.Add(crcFilename(filepath.Base(filepath.Dir(file))), screenshot)
+					} else {
+						m.logger.Printf("No match for \"%s\", with CRC \"%s\"\n", file, crc)
+					}
 				default:
 					return nil
 				}
@@ -146,7 +162,25 @@ func directoryWorker(ctx context.Context, in <-chan string) (<-chan error, error
 				return
 			}
 
-			// TODO Write out DB
+			if meta.Length() > 0 {
+				b, err := meta.MarshalBinary()
+				if err != nil {
+					errc <- err
+					return
+				}
+
+				f, err := os.Create(filepath.Join(dir, metaFilename))
+				if err != nil {
+					errc <- err
+					return
+				}
+				defer f.Close()
+
+				if _, err = f.Write(b); err != nil {
+					errc <- err
+					return
+				}
+			}
 		}
 	}()
 	return errc, nil
@@ -181,20 +215,25 @@ func mergeErrors(cs ...<-chan error) <-chan error {
 	return out
 }
 
-func Checksum(dir string) error {
+func (m *MegaSD) Checksum(db *GameDB, path string) error {
+	dir, err := filepath.Abs(path)
+	if err != nil {
+		return err
+	}
+
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	defer cancelFunc()
 
 	var errcList []<-chan error
 
-	dirs, errc, err := findDirectories(ctx, dir)
+	dirs, errc, err := m.findDirectories(ctx, dir)
 	if err != nil {
 		return err
 	}
 	errcList = append(errcList, errc)
 
 	for i := 0; i < 10; i++ {
-		errc, err := directoryWorker(ctx, dirs)
+		errc, err := m.directoryWorker(ctx, db, dirs)
 		if err != nil {
 			return err
 		}
