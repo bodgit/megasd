@@ -6,7 +6,6 @@ import (
 	"database/sql"
 	"encoding/binary"
 	"encoding/xml"
-	"errors"
 	"fmt"
 	img "image"
 	_ "image/gif"
@@ -235,7 +234,10 @@ func (db *GameDB) FindScreenshotByCRC(crc string) ([]byte, error) {
 	}
 }
 
-const metaFilename = "games.dbs"
+const (
+	metaFilename   = "games.dbs"
+	metaMaxEntries = 1024
+)
 
 type MetaDB struct {
 	checksums   map[uint32]uint16
@@ -263,8 +265,8 @@ func (db *MetaDB) Add(crc uint32, screenshot []byte) {
 func (db *MetaDB) MarshalBinary() ([]byte, error) {
 	length := len(db.checksums)
 
-	if length > 1024 {
-		return nil, errors.New("more than 1024 entries")
+	if length > metaMaxEntries {
+		return nil, fmt.Errorf("more than %d entries", metaMaxEntries)
 	}
 
 	keys := make([]uint32, 0, len(db.checksums))
@@ -280,7 +282,7 @@ func (db *MetaDB) MarshalBinary() ([]byte, error) {
 		return nil, err
 	}
 	// Pad to 4096 with 0xff's
-	if _, err := b.Write(bytes.Repeat([]byte{0xff, 0xff, 0xff, 0xff}, 1024-length)); err != nil {
+	if _, err := b.Write(bytes.Repeat([]byte{0xff, 0xff, 0xff, 0xff}, metaMaxEntries-length)); err != nil {
 		return nil, err
 	}
 
@@ -292,7 +294,7 @@ func (db *MetaDB) MarshalBinary() ([]byte, error) {
 		}
 	}
 	// Pad to 6144 with 0xff's
-	if _, err := b.Write(bytes.Repeat([]byte{0xff, 0xff}, 1024-length)); err != nil {
+	if _, err := b.Write(bytes.Repeat([]byte{0xff, 0xff}, metaMaxEntries-length)); err != nil {
 		return nil, err
 	}
 
