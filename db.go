@@ -33,7 +33,7 @@ func NewGameDB(file string) (*GameDB, error) {
 	}
 	db.SetMaxOpenConns(10)
 
-	if _, err = db.Exec("CREATE TABLE IF NOT EXISTS screenshot (id INTEGER PRIMARY KEY NOT NULL, sha1 TEXT NOT NULL UNIQUE, tile BLOB NOT NULL)"); err != nil {
+	if _, err = db.Exec("CREATE TABLE IF NOT EXISTS screenshot (id INTEGER PRIMARY KEY NOT NULL, sha1 TEXT NOT NULL UNIQUE, data BLOB NOT NULL)"); err != nil {
 		return nil, err
 	}
 
@@ -169,7 +169,7 @@ func (db *GameDB) addScreenshot(file string) (int64, error) {
 		if err := image.Encode(b, m); err != nil {
 			return 0, err
 		}
-		result, err := db.db.Exec("INSERT INTO screenshot (sha1, tile) VALUES (?, ?)", sha, b.Bytes())
+		result, err := db.db.Exec("INSERT INTO screenshot (sha1, data) VALUES (?, ?)", sha, b.Bytes())
 		if err != nil {
 			return 0, err
 		}
@@ -206,17 +206,17 @@ func (db *GameDB) addChecksum(game int64, crc string) error {
 
 func (db *GameDB) FindScreenshotByCRC(crc string) ([]byte, error) {
 	var year, genre sql.NullInt64
-	var tile []byte
-	switch err := db.db.QueryRow("SELECT g.year, g.genre, s.tile FROM checksum AS c JOIN game AS g ON c.game_id = g.id LEFT JOIN screenshot AS s ON g.screenshot_id = s.id WHERE c.crc = ?", crc).Scan(&year, &genre, &tile); err {
+	var data []byte
+	switch err := db.db.QueryRow("SELECT g.year, g.genre, s.data FROM checksum AS c JOIN game AS g ON c.game_id = g.id LEFT JOIN screenshot AS s ON g.screenshot_id = s.id WHERE c.crc = ?", crc).Scan(&year, &genre, &data); err {
 	case sql.ErrNoRows:
 		return nil, nil
 	case nil:
-		if tile == nil {
+		if data == nil {
 			return nil, nil
 		}
 
 		var screenshot [2048]byte
-		copy(screenshot[:], tile)
+		copy(screenshot[:], data)
 
 		// XXX Should only enable this if there is a genre and/or year?
 		screenshot[0x700] = 1
