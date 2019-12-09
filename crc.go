@@ -103,8 +103,8 @@ func crcFile(file string) (string, error) {
 	return fmt.Sprintf("%.*X", crc32.Size<<1, h.Sum(nil)), nil
 }
 
-func crcFilename(filename string) string {
+func crcFilename(filename string) uint32 {
 	var b [filenameTrim]byte
 	copy(b[:], []byte(fmt.Sprintf("%.*s", filenameTrim, strings.ToUpper(filename))))
-	return fmt.Sprintf("%.*X", crc32.Size<<1, crc.Update(0xffffffff, b[:]))
+	return crc.Update(0xffffffff, b[:])
 }
