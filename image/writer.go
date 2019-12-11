@@ -11,6 +11,8 @@ import (
 	"github.com/ericpauley/go-quantize/quantize"
 )
 
+var padColor = color.RGBA{0, 0, 0, 0}
+
 type encoder struct {
 	w io.Writer
 }
@@ -119,7 +121,7 @@ func packPalette(in, out []paletteMap) ([]paletteMap, bool) {
 
 			// Either the candidate palette is a subset or the
 			// difference can fit in the current palette
-			if len(d) == 0 || len(d)+len(out[i].palette) <= colorsPerPalette {
+			if len(d) == 0 || len(d)+len(out[i].palette) <= colorsPerPalette-1 {
 				dup := append(out[:0:0], out...)
 				if len(d) > 0 {
 					dup[i].palette = append(dup[i].palette, d...)
@@ -136,10 +138,12 @@ func packPalette(in, out []paletteMap) ([]paletteMap, bool) {
 }
 
 func padPalette(p color.Palette) color.Palette {
+	// Prepend the palette with one color to take the position of the transparent "color"
+	p = append(color.Palette{padColor}, p...)
 	// Pad palette to multiple of colorsPerPalette
 	if mod := len(p) % colorsPerPalette; mod > 0 {
 		for i := 0; i < colorsPerPalette-mod; i++ {
-			p = append(p, color.RGBA{0, 0, 0, 0})
+			p = append(p, padColor)
 		}
 	}
 	return p
@@ -161,7 +165,7 @@ func reducePalette(m *image.Paletted) (color.Palette, [numTiles]byte, bool) {
 		for tx := 0; tx < tileX; tx++ {
 			r := image.Rect(tx*tileWidth, ty*tileHeight, tx*tileWidth+tileWidth-1, ty*tileHeight+tileHeight-1)
 			p := uniqueColors(dup, r)
-			for len(p) > colorsPerPalette {
+			for len(p) > colorsPerPalette-1 {
 
 				// Find the two closest colors
 				c1, c2 := closestColors(p)
@@ -278,17 +282,17 @@ func Encode(w io.Writer, m image.Image) error {
 	// Will default to all zeroes which is correct for <= colorsPerPalette
 	var tiles [numTiles]byte
 
-	if pm == nil || len(pm.Palette) > colorsPerPalette {
+	if pm == nil || len(pm.Palette) > colorsPerPalette-1 {
 		q := quantize.MedianCutQuantizer{}
 
 		// Work out the starting maximum colors
-		max := colorsPerPalette * maxPalettes
+		max := colorsPerPalette*maxPalettes - maxPalettes
 		if pm != nil && len(pm.Palette) < max {
 			max = len(pm.Palette)
 		}
 
 		// Keep reducing the colors until the palette can be packed
-		for i := max; i >= colorsPerPalette; i-- {
+		for i := max; i >= colorsPerPalette-1; i-- {
 			// Create the initial palette
 			tmp := image.NewPaletted(b, q.Quantize(make(color.Palette, 0, i), m))
 			draw.Draw(tmp, b, m, b.Min, draw.Src)

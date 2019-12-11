@@ -3,7 +3,8 @@ Package image implements a MegaSD image decoder and encoder.
 
 The format is defined as 64 by 40 pixels exactly which is split into forty 8
 by 8 tiles. Up to three 16 color palettes can be defined and each tile can
-use only one of these palettes.
+use only one of these palettes. The first color in each palette is reserved
+for transparency.
 
 The file is written as 1280 bytes of pixel information; a 4-bit index for each
 pixel, followed by 40 bytes of palette index, one per tile and finally up to
