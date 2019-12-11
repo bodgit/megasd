@@ -77,12 +77,12 @@ func (m *MegaSD) findDirectories(ctx context.Context, base string) (<-chan strin
 	return out, errc, nil
 }
 
-func (m *MegaSD) directoryWorker(ctx context.Context, db *GameDB, in <-chan string) (<-chan error, error) {
+func (m *MegaSD) directoryWorker(ctx context.Context, in <-chan string) (<-chan error, error) {
 	errc := make(chan error, 1)
 	go func() {
 		defer close(errc)
 		for dir := range in {
-			meta := metadata.New()
+			db := metadata.New()
 			if err := filepath.Walk(dir, func(file string, info os.FileInfo, err error) error {
 				if err != nil {
 					return err
@@ -127,12 +127,12 @@ func (m *MegaSD) directoryWorker(ctx context.Context, db *GameDB, in <-chan stri
 						return err
 					}
 
-					screenshot, err := db.FindScreenshotByCRC(crc)
+					screenshot, err := m.db.FindScreenshotByCRC(crc)
 					if err != nil {
 						return err
 					}
 					if screenshot != nil {
-						if err := meta.Set(metadata.CRCFilename(strings.TrimSuffix(filepath.Base(file), filepath.Ext(file))), screenshot); err != nil {
+						if err := db.Set(metadata.CRCFilename(strings.TrimSuffix(filepath.Base(file), filepath.Ext(file))), screenshot); err != nil {
 							return err
 						}
 					} else {
@@ -147,12 +147,12 @@ func (m *MegaSD) directoryWorker(ctx context.Context, db *GameDB, in <-chan stri
 						return err
 					}
 
-					screenshot, err := db.FindScreenshotByCRC(crc)
+					screenshot, err := m.db.FindScreenshotByCRC(crc)
 					if err != nil {
 						return err
 					}
 					if screenshot != nil {
-						if err := meta.Set(metadata.CRCFilename(filepath.Base(filepath.Dir(file))), screenshot); err != nil {
+						if err := db.Set(metadata.CRCFilename(filepath.Base(filepath.Dir(file))), screenshot); err != nil {
 							return err
 						}
 					} else {
@@ -168,8 +168,8 @@ func (m *MegaSD) directoryWorker(ctx context.Context, db *GameDB, in <-chan stri
 				return
 			}
 
-			if meta.Length() > 0 {
-				b, err := meta.MarshalBinary()
+			if db.Length() > 0 {
+				b, err := db.MarshalBinary()
 				if err != nil {
 					errc <- err
 					return
@@ -221,7 +221,7 @@ func mergeErrors(cs ...<-chan error) <-chan error {
 	return out
 }
 
-func (m *MegaSD) Checksum(db *GameDB, path string) error {
+func (m *MegaSD) Scan(path string) error {
 	dir, err := filepath.Abs(path)
 	if err != nil {
 		return err
@@ -239,7 +239,7 @@ func (m *MegaSD) Checksum(db *GameDB, path string) error {
 	errcList = append(errcList, errc)
 
 	for i := 0; i < 10; i++ {
-		errc, err := m.directoryWorker(ctx, db, dirs)
+		errc, err := m.directoryWorker(ctx, dirs)
 		if err != nil {
 			return err
 		}
