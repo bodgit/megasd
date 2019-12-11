@@ -5,6 +5,7 @@ import (
 	"crypto/sha1"
 	"database/sql"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	img "image"
 	"io"
@@ -15,14 +16,20 @@ import (
 
 	"github.com/bodgit/megasd/image"
 	"github.com/bodgit/megasd/metadata"
+
+	// Database driver
 	_ "github.com/mattn/go-sqlite3"
 )
 
-type GameDB struct {
+type gameDB struct {
 	db *sql.DB
 }
 
-func NewGameDB(file string) (*GameDB, error) {
+func newGameDB(file string) (*gameDB, error) {
+	if file == "" {
+		return nil, errors.New("no file")
+	}
+
 	db, err := sql.Open("sqlite3", fmt.Sprintf("%s?_foreign_keys=on", file))
 	if err != nil {
 		return nil, err
@@ -41,7 +48,7 @@ func NewGameDB(file string) (*GameDB, error) {
 		return nil, err
 	}
 
-	return &GameDB{
+	return &gameDB{
 		db: db,
 	}, nil
 }
@@ -74,7 +81,7 @@ type xmlGenre struct {
 	Name    string   `xml:"Name"`
 }
 
-func (db *GameDB) ImportXML(file string) error {
+func (db *gameDB) ImportXML(file string) error {
 	f, err := os.Open(file)
 	if err != nil {
 		return err
@@ -140,11 +147,11 @@ func (db *GameDB) ImportXML(file string) error {
 	return nil
 }
 
-func (db *GameDB) Close() error {
+func (db *gameDB) Close() error {
 	return db.db.Close()
 }
 
-func (db *GameDB) addScreenshot(file string) (int64, error) {
+func (db *gameDB) addScreenshot(file string) (int64, error) {
 	f, err := os.Open(file)
 	if err != nil {
 		return 0, err
@@ -177,7 +184,7 @@ func (db *GameDB) addScreenshot(file string) (int64, error) {
 	}
 }
 
-func (db *GameDB) addGame(name string, year, genre, screenshot sql.NullInt64) (int64, error) {
+func (db *gameDB) addGame(name string, year, genre, screenshot sql.NullInt64) (int64, error) {
 	var id int64
 	switch err := db.db.QueryRow("SELECT id FROM game WHERE name = ? AND year = ? AND genre = ? AND screenshot_id = ?", name, year, genre, screenshot).Scan(&id); err {
 	case sql.ErrNoRows:
@@ -193,14 +200,14 @@ func (db *GameDB) addGame(name string, year, genre, screenshot sql.NullInt64) (i
 	}
 }
 
-func (db *GameDB) addChecksum(game int64, crc string) error {
+func (db *gameDB) addChecksum(game int64, crc string) error {
 	if _, err := db.db.Exec("INSERT OR REPLACE INTO checksum (game_id, crc) VALUES (?, ?)", game, crc); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (db *GameDB) FindScreenshotByCRC(crc string) ([]byte, error) {
+func (db *gameDB) FindScreenshotByCRC(crc string) ([]byte, error) {
 	var year, genre sql.NullInt64
 	var data []byte
 	switch err := db.db.QueryRow("SELECT g.year, g.genre, s.data FROM checksum AS c JOIN game AS g ON c.game_id = g.id LEFT JOIN screenshot AS s ON g.screenshot_id = s.id WHERE c.crc = ?", crc).Scan(&year, &genre, &data); err {
@@ -228,4 +235,15 @@ func (db *GameDB) FindScreenshotByCRC(crc string) ([]byte, error) {
 	default:
 		return nil, err
 	}
+}
+
+// Close closes the database
+func (m *MegaSD) Close() error {
+	return m.db.Close()
+}
+
+// ImportXML parses the provided XML file and imports it and any screenshots
+// it references into the internal database, destroying any previous data
+func (m *MegaSD) ImportXML(file string) error {
+	return m.db.ImportXML(file)
 }

@@ -221,6 +221,8 @@ func mergeErrors(cs ...<-chan error) <-chan error {
 	return out
 }
 
+// Scan traverses the given directory and creates a metadata in any
+// sub-directory that contains matching images
 func (m *MegaSD) Scan(path string) error {
 	dir, err := filepath.Abs(path)
 	if err != nil {

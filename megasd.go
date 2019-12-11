@@ -6,14 +6,22 @@ package megasd
 
 import "log"
 
+// MegaSD manages an internal game database
 type MegaSD struct {
-	db     *GameDB
+	db     *gameDB
 	logger *log.Logger
 }
 
-func New(db *GameDB, logger *log.Logger) *MegaSD {
+// New creates a new MegaSD instance given the intended path to the database
+// and an instance of log.Logger.
+func New(file string, logger *log.Logger) (*MegaSD, error) {
+	db, err := newGameDB(file)
+	if err != nil {
+		return nil, err
+	}
+
 	return &MegaSD{
 		db:     db,
 		logger: logger,
-	}
+	}, nil
 }
