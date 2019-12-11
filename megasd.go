@@ -6,8 +6,6 @@ package megasd
 
 import "log"
 
-const screenshotSize = 2048
-
 type MegaSD struct {
 	db     *GameDB
 	logger *log.Logger

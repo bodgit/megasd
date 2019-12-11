@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+
+	"github.com/bodgit/megasd/metadata"
 )
 
 func containsCue(dir string) (bool, error) {
@@ -80,7 +82,7 @@ func (m *MegaSD) directoryWorker(ctx context.Context, db *GameDB, in <-chan stri
 	go func() {
 		defer close(errc)
 		for dir := range in {
-			meta := NewMetaDB()
+			meta := metadata.New()
 			if err := filepath.Walk(dir, func(file string, info os.FileInfo, err error) error {
 				if err != nil {
 					return err
@@ -130,7 +132,7 @@ func (m *MegaSD) directoryWorker(ctx context.Context, db *GameDB, in <-chan stri
 						return err
 					}
 					if screenshot != nil {
-						if err := meta.Add(crcFilename(strings.TrimSuffix(filepath.Base(file), filepath.Ext(file))), screenshot); err != nil {
+						if err := meta.Set(metadata.CRCFilename(strings.TrimSuffix(filepath.Base(file), filepath.Ext(file))), screenshot); err != nil {
 							return err
 						}
 					} else {
@@ -150,7 +152,7 @@ func (m *MegaSD) directoryWorker(ctx context.Context, db *GameDB, in <-chan stri
 						return err
 					}
 					if screenshot != nil {
-						if err := meta.Add(crcFilename(filepath.Base(filepath.Dir(file))), screenshot); err != nil {
+						if err := meta.Set(metadata.CRCFilename(filepath.Base(filepath.Dir(file))), screenshot); err != nil {
 							return err
 						}
 					} else {
@@ -173,7 +175,7 @@ func (m *MegaSD) directoryWorker(ctx context.Context, db *GameDB, in <-chan stri
 					return
 				}
 
-				f, err := os.Create(filepath.Join(dir, metaFilename))
+				f, err := os.Create(filepath.Join(dir, metadata.Filename))
 				if err != nil {
 					errc <- err
 					return

@@ -4,22 +4,17 @@ import (
 	"bytes"
 	"crypto/sha1"
 	"database/sql"
-	"encoding/binary"
 	"encoding/xml"
-	"errors"
 	"fmt"
 	img "image"
-	_ "image/gif"
-	_ "image/jpeg"
-	_ "image/png"
 	"io"
 	"io/ioutil"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 
 	"github.com/bodgit/megasd/image"
+	"github.com/bodgit/megasd/metadata"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -216,7 +211,7 @@ func (db *GameDB) FindScreenshotByCRC(crc string) ([]byte, error) {
 			return nil, nil
 		}
 
-		var screenshot [screenshotSize]byte
+		var screenshot [metadata.ScreenshotSize]byte
 		copy(screenshot[:], data)
 
 		// XXX Should only enable this if there is a genre and/or year?
@@ -233,86 +228,4 @@ func (db *GameDB) FindScreenshotByCRC(crc string) ([]byte, error) {
 	default:
 		return nil, err
 	}
-}
-
-const (
-	metaFilename   = "games.dbs"
-	metaMaxEntries = 1024
-)
-
-type MetaDB struct {
-	checksums   map[uint32]uint16
-	screenshots [][]byte
-}
-
-func NewMetaDB() *MetaDB {
-	return &MetaDB{
-		checksums: make(map[uint32]uint16),
-	}
-}
-
-func (db *MetaDB) Length() int {
-	return len(db.checksums)
-}
-
-func (db *MetaDB) Add(crc uint32, screenshot []byte) error {
-	if len(screenshot) != screenshotSize {
-		return errors.New("incorrect length")
-	}
-	if _, ok := db.checksums[crc]; !ok {
-		db.screenshots = append(db.screenshots, screenshot)
-		db.checksums[crc] = uint16(len(db.screenshots) - 1)
-	}
-	return nil
-}
-
-func (db *MetaDB) MarshalBinary() ([]byte, error) {
-	length := len(db.checksums)
-
-	if length > metaMaxEntries {
-		return nil, fmt.Errorf("more than %d entries", metaMaxEntries)
-	}
-
-	keys := make([]uint32, 0, len(db.checksums))
-	for k := range db.checksums {
-		keys = append(keys, k)
-	}
-	sort.Slice(keys, func(i, j int) bool { return keys[i] < keys[j] })
-
-	b := new(bytes.Buffer)
-
-	// Write out CRC values
-	if err := binary.Write(b, binary.LittleEndian, &keys); err != nil {
-		return nil, err
-	}
-	// Pad to 4096 with 0xff's
-	if _, err := b.Write(bytes.Repeat([]byte{0xff, 0xff, 0xff, 0xff}, metaMaxEntries-length)); err != nil {
-		return nil, err
-	}
-
-	// Write out screenshot indices
-	for _, k := range keys {
-		v := db.checksums[k]
-		if err := binary.Write(b, binary.LittleEndian, &v); err != nil {
-			return nil, err
-		}
-	}
-	// Pad to 6144 with 0xff's
-	if _, err := b.Write(bytes.Repeat([]byte{0xff, 0xff}, metaMaxEntries-length)); err != nil {
-		return nil, err
-	}
-
-	// Write out screenshots
-	for _, s := range db.screenshots {
-		if _, err := b.Write(s); err != nil {
-			return nil, err
-		}
-	}
-
-	return b.Bytes(), nil
-}
-
-func (db *MetaDB) UnmarshalBinary(b []byte) error {
-	// TODO
-	return nil
 }

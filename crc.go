@@ -8,9 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 
-	crc "github.com/bodgit/megasd/crc32"
 	"github.com/vchimishuk/chub/cue"
 )
 
@@ -18,10 +16,6 @@ const (
 	sectorHeader  = 16
 	sectorSize    = 2048
 	sectorTrailer = 288
-)
-
-const (
-	filenameTrim = 56
 )
 
 func firstDataTrack(sheet *cue.Sheet) (string, cue.TrackDataType, error) {
@@ -101,10 +95,4 @@ func crcFile(file string) (string, error) {
 	}
 
 	return fmt.Sprintf("%.*X", crc32.Size<<1, h.Sum(nil)), nil
-}
-
-func crcFilename(filename string) uint32 {
-	var b [filenameTrim]byte
-	copy(b[:], []byte(fmt.Sprintf("%.*s", filenameTrim, strings.ToUpper(filename))))
-	return crc.Update(0xffffffff, b[:])
 }
