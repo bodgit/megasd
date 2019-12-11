@@ -77,6 +77,81 @@ func (m *MegaSD) findDirectories(ctx context.Context, base string) (<-chan strin
 	return out, errc, nil
 }
 
+func (m *MegaSD) fileWorker(dir, file string, db *metadata.DB) error {
+	var crc string
+	var err error
+	switch filepath.Ext(file) {
+	case ".bin":
+		// For any .bin file, if there is a .cue file in the same directory, assume it's a CD track rather than a ROM image
+		hasCue, err := containsCue(filepath.Dir(file))
+		if err != nil {
+			return err
+		}
+		if hasCue {
+			return nil
+		}
+		fallthrough
+	case ".32x", ".md", ".sg", ".sms":
+		// Check files are in the "top" directory
+		if filepath.Dir(file) != dir {
+			return nil
+		}
+		crc, err = crcFile(file)
+		if err != nil {
+			return err
+		}
+
+		screenshot, err := m.db.FindScreenshotByCRC(crc)
+		if err != nil {
+			return err
+		}
+		if screenshot != nil {
+			return db.Set(metadata.CRCFilename(strings.TrimSuffix(filepath.Base(file), filepath.Ext(file))), screenshot)
+		}
+	case ".cue":
+		if filepath.Dir(filepath.Dir(file)) != dir {
+			return nil
+		}
+		crc, err = crcCueFile(file)
+		if err != nil {
+			return err
+		}
+
+		screenshot, err := m.db.FindScreenshotByCRC(crc)
+		if err != nil {
+			return err
+		}
+		if screenshot != nil {
+			return db.Set(metadata.CRCFilename(filepath.Base(filepath.Dir(file))), screenshot)
+		}
+	default:
+		return nil
+	}
+
+	m.logger.Printf("No match for \"%s\", with CRC \"%s\"\n", file, crc)
+
+	return nil
+}
+
+func writeMetadata(dir string, db *metadata.DB) error {
+	b, err := db.MarshalBinary()
+	if err != nil {
+		return err
+	}
+
+	f, err := os.Create(filepath.Join(dir, metadata.Filename))
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	if _, err = f.Write(b); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (m *MegaSD) directoryWorker(ctx context.Context, in <-chan string) (<-chan error, error) {
 	errc := make(chan error, 1)
 	go func() {
@@ -106,60 +181,8 @@ func (m *MegaSD) directoryWorker(ctx context.Context, in <-chan string) (<-chan 
 					return nil
 				}
 
-				switch filepath.Ext(file) {
-				case ".bin":
-					// For any .bin file, if there is a .cue file in the same directory, assume it's a CD track rather than a ROM image
-					hasCue, err := containsCue(filepath.Dir(file))
-					if err != nil {
-						return err
-					}
-					if hasCue {
-						return nil
-					}
-					fallthrough
-				case ".32x", ".md", ".sg", ".sms":
-					// Check files are in the "top" directory
-					if filepath.Dir(file) != dir {
-						return nil
-					}
-					crc, err := crcFile(file)
-					if err != nil {
-						return err
-					}
-
-					screenshot, err := m.db.FindScreenshotByCRC(crc)
-					if err != nil {
-						return err
-					}
-					if screenshot != nil {
-						if err := db.Set(metadata.CRCFilename(strings.TrimSuffix(filepath.Base(file), filepath.Ext(file))), screenshot); err != nil {
-							return err
-						}
-					} else {
-						m.logger.Printf("No match for \"%s\", with CRC \"%s\"\n", file, crc)
-					}
-				case ".cue":
-					if filepath.Dir(filepath.Dir(file)) != dir {
-						return nil
-					}
-					crc, err := crcCueFile(file)
-					if err != nil {
-						return err
-					}
-
-					screenshot, err := m.db.FindScreenshotByCRC(crc)
-					if err != nil {
-						return err
-					}
-					if screenshot != nil {
-						if err := db.Set(metadata.CRCFilename(filepath.Base(filepath.Dir(file))), screenshot); err != nil {
-							return err
-						}
-					} else {
-						m.logger.Printf("No match for \"%s\", with CRC \"%s\"\n", file, crc)
-					}
-				default:
-					return nil
+				if err := m.fileWorker(dir, file, db); err != nil {
+					return err
 				}
 
 				return nil
@@ -169,20 +192,7 @@ func (m *MegaSD) directoryWorker(ctx context.Context, in <-chan string) (<-chan 
 			}
 
 			if db.Length() > 0 {
-				b, err := db.MarshalBinary()
-				if err != nil {
-					errc <- err
-					return
-				}
-
-				f, err := os.Create(filepath.Join(dir, metadata.Filename))
-				if err != nil {
-					errc <- err
-					return
-				}
-				defer f.Close()
-
-				if _, err = f.Write(b); err != nil {
+				if err := writeMetadata(dir, db); err != nil {
 					errc <- err
 					return
 				}
