@@ -36,9 +36,10 @@ func main() {
 
 	app.Flags = []cli.Flag{
 		&cli.StringFlag{
-			Name:  "db",
-			Value: filepath.Join(cwd, defaultDB),
-			Usage: "path to database",
+			Name:    "db",
+			EnvVars: []string{"MEGASD_DB"},
+			Value:   filepath.Join(cwd, defaultDB),
+			Usage:   "path to database",
 		},
 		&cli.BoolFlag{
 			Name:  "verbose, v",
