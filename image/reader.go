@@ -8,9 +8,9 @@ import (
 )
 
 var (
-	errNotEnough  = errors.New("tile: not enough image data")
-	errTooMuch    = errors.New("tile: too much image data")
-	errBadPalette = errors.New("tile: invalid palette index")
+	errNotEnough  = errors.New("image: not enough image data")
+	errTooMuch    = errors.New("image: too much image data")
+	errBadPalette = errors.New("image: invalid palette index")
 )
 
 func readFull(r io.Reader, b []byte) error {
@@ -128,7 +128,7 @@ func (d *decoder) decode(r io.Reader, configOnly bool) error {
 	return nil
 }
 
-// Decode reads a MegaSD tile from r and returns it as an image.Image.
+// Decode reads a MegaSD image from r and returns it as an image.Image.
 func Decode(r io.Reader) (image.Image, error) {
 	var d decoder
 	if err := d.decode(r, false); err != nil {
@@ -137,7 +137,7 @@ func Decode(r io.Reader) (image.Image, error) {
 	return d.image, nil
 }
 
-// DecodeConfig returns the color model and dimensions of a MegaSD tile without
+// DecodeConfig returns the color model and dimensions of a MegaSD image without
 // decoding the entire tile.
 func DecodeConfig(r io.Reader) (image.Config, error) {
 	var d decoder

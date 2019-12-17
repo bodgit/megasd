@@ -260,11 +260,11 @@ func (e *encoder) encode(m *image.Paletted, tiles [numTiles]byte) error {
 	return nil
 }
 
-// Encode writes the Image m to w in MegaSD tile format.
+// Encode writes the Image m to w in MegaSD image format.
 func Encode(w io.Writer, m image.Image) error {
 	b := m.Bounds()
 	if b.Dx() != pixelX || b.Dy() != pixelY {
-		return errors.New("tile: image is wrong size")
+		return errors.New("image: image is wrong size")
 	}
 
 	pm, _ := m.(*image.Paletted)
