@@ -1,15 +1,14 @@
 package main
 
 import (
-	_ "image/gif"
-	_ "image/jpeg"
-	_ "image/png"
+	"image/png"
 	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
 
 	"github.com/bodgit/megasd"
+	"github.com/bodgit/megasd/image"
 	"github.com/urfave/cli/v2"
 )
 
@@ -48,6 +47,40 @@ func main() {
 	}
 
 	app.Commands = []*cli.Command{
+		{
+			Name:        "encode",
+			Usage:       "Encode and convert a PNG image to MegaSD format",
+			Description: "The PNG is read from the standard input and the converted image is written to standard output",
+			Action: func(c *cli.Context) error {
+				m, err := png.Decode(os.Stdin)
+				if err != nil {
+					return cli.NewExitError(err, 1)
+				}
+
+				if err := image.Encode(os.Stdout, m); err != nil {
+					return cli.NewExitError(err, 1)
+				}
+
+				return nil
+			},
+		},
+		{
+			Name:        "decode",
+			Usage:       "Decode a MegaSD image back to PNG format",
+			Description: "The image is read from the standard input and the PNG is written to standard output",
+			Action: func(c *cli.Context) error {
+				m, err := image.Decode(os.Stdin)
+				if err != nil {
+					return cli.NewExitError(err, 1)
+				}
+
+				if err := png.Encode(os.Stdout, m); err != nil {
+					return cli.NewExitError(err, 1)
+				}
+
+				return nil
+			},
+		},
 		{
 			Name:        "import",
 			Usage:       "Import XML and screenshots from C# tool",
