@@ -39,18 +39,8 @@ builds:
       - amd64
     goos:
       - windows
+    id: windows
     main: ./cmd/megasd/main.go
-  - binary: jaguarsd
-    main: ./cmd/jaguarsd/main.go
-    env:
-      - CGO_ENABLED=0
-    goarch:
-      - amd64
-      - arm
-    goos:
-      - darwin
-      - linux
-      - windows
 checksum:
   name_template: 'checksums.txt'
 env:
