@@ -1,0 +1,59 @@
+---
+archives:
+  - builds: ['linux', 'macos', 'windows']
+    format: tar.gz
+    format_overrides:
+      - goos: windows
+        format: zip
+before:
+  hooks:
+    - go mod tidy
+builds:
+  - binary: megasd
+    env:
+      - CC=o64-clang
+      - CXX=o64-clang++
+    goarch:
+      - amd64
+    goos:
+      - darwin
+    id: macos
+    main: ./cmd/megasd/main.go
+  - binary: megasd
+    flags:
+      - -tags=netgo
+      - -v
+    goarch:
+      - amd64
+    goos:
+      - linux
+    id: linux
+    ldflags:
+      - -linkmode external -extldflags -static -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}} -X main.builtBy=goreleaser
+    main: ./cmd/megasd/main.go
+  - binary: megasd
+    env:
+      - CC=x86_64-w64-mingw32-gcc
+      - CXX=x86_64-w64-mingw32-g++
+    goarch:
+      - amd64
+    goos:
+      - windows
+    main: ./cmd/megasd/main.go
+  - binary: jaguarsd
+    main: ./cmd/jaguarsd/main.go
+    env:
+      - CGO_ENABLED=0
+    goarch:
+      - amd64
+      - arm
+    goos:
+      - darwin
+      - linux
+      - windows
+checksum:
+  name_template: 'checksums.txt'
+env:
+  - CGO_ENABLED=1
+release:
+  prerelease: auto
